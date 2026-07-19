@@ -7,6 +7,7 @@ TabelaVariaveis ts_local;
 TabelaFuncoes   ts_funcoes;
 SimboloFuncao  *funcao_atual = NULL;
 int             dentro_de_funcao = 0;
+int             inserindo_parametro = 0;
 
 const char* tipo_para_str(Tipo t) {
     switch (t) {
@@ -27,12 +28,35 @@ void ts_var_init(TabelaVariaveis *ts) {
 
 int ts_var_insere(TabelaVariaveis *ts, const char *nome, Tipo tipo) {
     if (ts_var_busca(ts, nome) != NULL) {
-        return 0; /* ja existe nesta TS: redeclaracao */
+        return 0; /* já existe: erro de redeclaração */
     }
-    strncpy(ts->vars[ts->n].nome, nome, MAX_NOME - 1);
-    ts->vars[ts->n].nome[MAX_NOME - 1] = '\0';
-    ts->vars[ts->n].tipo = tipo;
-    ts->vars[ts->n].inicializada = 0;
+    
+    int idx = ts->n;
+    strncpy(ts->vars[idx].nome, nome, MAX_NOME - 1);
+    ts->vars[idx].nome[MAX_NOME - 1] = '\0';
+    ts->vars[idx].tipo = tipo;
+    ts->vars[idx].inicializada = 0;
+
+    // Se estivermos manipulando a tabela local (ts_local)
+    if (ts == &ts_local) {
+        if (inserindo_parametro) {
+            /* Parâmetros em x86 entram empilhados antes do EBP.
+               O primeiro parâmetro fica em [ebp+8], o segundo em [ebp+12], etc. */
+            ts->vars[idx].offset = 8 + (idx * 4);
+        } else {
+            /* Variáveis locais ficam abaixo do EBP (valores negativos).
+               Se a função já tem parâmetros inseridos antes, precisamos desconsiderar 
+               a contagem de parâmetros para calcular o offset local. */
+            int n_locais_puras = 0;
+            for(int i = 0; i < idx; i++) {
+                if(ts->vars[i].offset < 0) n_locais_puras++;
+            }
+            ts->vars[idx].offset = -4 - (n_locais_puras * 4);
+        }
+    } else {
+        ts->vars[idx].offset = 0; // Globais usam rótulos de memória, não offsets
+    }
+
     ts->n++;
     return 1;
 }
@@ -73,6 +97,23 @@ SimboloFuncao* ts_func_busca(const char *nome) {
     return NULL;
 }
 
+SimboloVar* busca_variavel_info(const char *nome, int *is_local) {
+    // Procura primeiro na tabela local
+    SimboloVar *v = ts_var_busca(&ts_local, nome);
+    if (v != NULL) {
+        *is_local = 1;
+        return v;
+    }
+    // Se não achar, procura na global
+    v = ts_var_busca(&ts_global, nome);
+    if (v != NULL) {
+        *is_local = 0;
+        return v;
+    }
+    return NULL; // Não encontrada
+}
+
+
 SimboloFuncao* ts_func_insere_prototipo(const char *nome, Tipo tipo_retorno) {
     SimboloFuncao *existente = ts_func_busca(nome);
     if (existente != NULL) {
@@ -96,6 +137,17 @@ void ts_func_adiciona_param(SimboloFuncao *f, const char *nome, Tipo tipo) {
     f->params[f->n_params].nome[MAX_NOME - 1] = '\0';
     f->params[f->n_params].tipo = tipo;
     f->n_params++;
+}
+
+int tamanho_locais_atual(void) {
+    int total = 0;
+    for (int i = 0; i < ts_local.n; i++) {
+        // Apenas variáveis com offset negativo contam como locais que exigem 'sub esp, X'
+        if (ts_local.vars[i].offset < 0) {
+            total += 4; // Cada variável ocupa 4 bytes (32-bits)
+        }
+    }
+    return total;
 }
 
 /* ---------------- impressao final ---------------- */

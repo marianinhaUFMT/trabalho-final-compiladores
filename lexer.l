@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "tab_simb.h"
+#include "codeGeneration.h"
 #include "parser.tab.h"
 
 void yyerror(const char *);

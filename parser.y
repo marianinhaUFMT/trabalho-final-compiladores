@@ -1,24 +1,36 @@
+%code requires {
+    #include "tab_simb.h"
+    #include "codeGeneration.h"
+}
+
 %{
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "tab_simb.h"
+#include "codeGeneration.h"
 
 int  yylex(void);
 void yyerror(const char *s);
 
 extern int linha_atual;
+extern int inserindo_parametro;
 
 int erros_encontrados = 0;
 int main_definida = 0;
+
+FILE *output_file;
+static int secao_data_aberta = 0;
+static int secao_text_aberta = 0;
 
 /* acumulador temporario usado para montar a assinatura de uma funcao
    (prototipo ou implementacao) antes de gravar/validar na TS de funcoes */
 static SimboloFuncao temp_func;
 
-/* acumulador temporario dos argumentos de uma chamada de funcao */
+/* acumulador temporario dos argumentos de uma chamada de funcao (tipo + codigo gerado) */
 static char  chamada_nome[MAX_NOME];
 static Tipo  chamada_args[MAX_PARAMS];
+static char  temp_arg_codes[MAX_PARAMS][CODE_BUF];
 static int   chamada_n_args;
 
 static void erro_semantico(const char *msg) {
@@ -39,9 +51,11 @@ static void inicia_chamada(const char *nome) {
     chamada_n_args = 0;
 }
 
-static void empilha_arg(Tipo t) {
+static void empilha_arg(Tipo t, char *code) {
     if (chamada_n_args < MAX_PARAMS) {
-        chamada_args[chamada_n_args++] = t;
+        chamada_args[chamada_n_args] = t;
+        strcpy(temp_arg_codes[chamada_n_args], code);
+        chamada_n_args++;
     }
 }
 
@@ -76,6 +90,7 @@ static Tipo finaliza_chamada(void) {
     struct {
         char str[256];
         Tipo tipo;
+        char code[CODE_BUF];
     } c;
 }
 
@@ -84,7 +99,8 @@ static Tipo finaliza_chamada(void) {
 %token IF ELSE WHILE READ WRITE RETURN TRUE FALSE MAIN
 %token EQ NE LT LE GT GE NOT
 
-%type <c> tipo expr chamada_funcao
+%type <c> tipo expr chamada_funcao comando lista_comandos
+%type <c> declaracao_variavel atribuicao condicional laco leitura escrita comando_return
 
 %left EQ NE
 %left LT GT LE GE
@@ -122,12 +138,19 @@ tipo:
 declaracao_variavel:
         tipo VARIABLE ';'
         {
+            $$.code[0] = '\0';
             TabelaVariaveis *ts = dentro_de_funcao ? &ts_local : &ts_global;
             if (!ts_var_insere(ts, $2.str, $1.tipo)) {
                 char msg[512];
                 sprintf(msg, "variavel '%s' ja declarada neste escopo", $2.str);
                 erro_semantico(msg);
+            } else if (!dentro_de_funcao) {
+                if (!secao_data_aberta) { fprintf(output_file, "section .data\n"); secao_data_aberta = 1; }
+                char buf[128]; buf[0] = '\0';
+                makeCodeDeclGlobal(buf, $2.str);
+                fprintf(output_file, "%s", buf);
             }
+            /* variavel local: nao gera codigo aqui, apenas reserva espaco via offset na TS */
         }
     ;
 
@@ -228,11 +251,13 @@ definicao_funcao:
             dentro_de_funcao = 1;
             ts_var_init(&ts_local);
             /* parametros da funcao se comportam como variaveis locais, ja inicializadas */
+            inserindo_parametro = 1;
             for (int i = 0; i < temp_func.n_params; i++) {
                 ts_var_insere(&ts_local, temp_func.params[i].nome, temp_func.params[i].tipo);
                 SimboloVar *pv = ts_var_busca(&ts_local, temp_func.params[i].nome);
                 if (pv) pv->inicializada = 1;
             }
+            inserindo_parametro = 0;
         }
         '{' lista_comandos '}'
         {
@@ -241,6 +266,13 @@ definicao_funcao:
                 sprintf(msg, "funcao '%s' nao possui comando 'return' (retorno obrigatorio)", funcao_atual->nome);
                 erro_semantico(msg);
             }
+            if (!secao_text_aberta) { fprintf(output_file, "section .text\n"); secao_text_aberta = 1; }
+            char prolog[CODE_BUF]; char epilog[CODE_BUF];
+            makeCodeFuncProlog(prolog, funcao_atual->nome, tamanho_locais_atual());
+            epilog[0] = '\0';
+            fprintf(output_file, "%s", prolog);
+            fprintf(output_file, "%s", $4.code);
+            fprintf(output_file, "%s", epilog);
             dentro_de_funcao = 0;
             funcao_atual = NULL;
         }
@@ -267,6 +299,14 @@ funcao_main:
             if (!funcao_atual->tem_return) {
                 erro_semantico("funcao 'main' nao possui comando 'return' (retorno obrigatorio)");
             }
+            if (!secao_text_aberta) { fprintf(output_file, "section .text\n"); secao_text_aberta = 1; }
+            fprintf(output_file, "global main\n");
+            char prolog[CODE_BUF]; char epilog[CODE_BUF];
+            makeCodeFuncProlog(prolog, "main", tamanho_locais_atual());
+            epilog[0] = '\0';
+            fprintf(output_file, "%s", prolog);
+            fprintf(output_file, "%s", $7.code);
+            fprintf(output_file, "%s", epilog);
             dentro_de_funcao = 0;
             funcao_atual = NULL;
         }
@@ -276,24 +316,34 @@ funcao_main:
 
 lista_comandos:
         lista_comandos comando
-    |   /* vazio */
+        {
+            strcpy($$.code, $1.code);
+            strcat($$.code, $2.code);
+        }
+    |   /* vazio */ { $$.code[0] = '\0'; }
     ;
 
 comando:
-        declaracao_variavel
-    |   atribuicao
-    |   condicional
-    |   laco
-    |   leitura
-    |   escrita
-    |   comando_return
+        declaracao_variavel { strcpy($$.code, $1.code); }
+    |   atribuicao           { strcpy($$.code, $1.code); }
+    |   condicional          { strcpy($$.code, $1.code); }
+    |   laco                 { strcpy($$.code, $1.code); }
+    |   leitura               { strcpy($$.code, $1.code); }
+    |   escrita                { strcpy($$.code, $1.code); }
+    |   comando_return          { strcpy($$.code, $1.code); }
     |   chamada_funcao ';'
+        {
+            strcpy($$.code, $1.code);
+            strcat($$.code, "pop eax ; retorno da chamada descartado\n");
+        }
     ;
 
 atribuicao:
         VARIABLE '=' expr ';'
         {
-            SimboloVar *v = busca_variavel($1.str);
+            $$.code[0] = '\0';
+            int is_local;
+            SimboloVar *v = busca_variavel_info($1.str, &is_local);
             if (v == NULL) {
                 char msg[512];
                 sprintf(msg, "variavel '%s' nao declarada", $1.str);
@@ -305,29 +355,49 @@ atribuicao:
                 erro_semantico(msg);
             } else {
                 v->inicializada = 1;
+                if (is_local) makeCodeAssignLocal($$.code, $3.code, $1.str, v->offset);
+                else           makeCodeAssignGlobal($$.code, $3.code, $1.str);
             }
         }
     ;
 
 condicional:
         IF '(' expr ')' '{' lista_comandos '}'
+        {
+            $$.code[0] = '\0';
+            int l1 = novoLabel(); int l2 = novoLabel();
+            makeCodeIf($$.code, $3.code, $6.code, "", 0, l1, l2);
+        }
     |   IF '(' expr ')' '{' lista_comandos '}' ELSE '{' lista_comandos '}'
+        {
+            $$.code[0] = '\0';
+            int l1 = novoLabel(); int l2 = novoLabel();
+            makeCodeIf($$.code, $3.code, $6.code, $10.code, 1, l1, l2);
+        }
     ;
 
 laco:
         WHILE '(' expr ')' '{' lista_comandos '}'
+        {
+            $$.code[0] = '\0';
+            int l1 = novoLabel(); int l2 = novoLabel();
+            makeCodeWhile($$.code, $3.code, $6.code, l1, l2);
+        }
     ;
 
 leitura:
         READ '(' VARIABLE ')' ';'
         {
-            SimboloVar *v = busca_variavel($3.str);
+            $$.code[0] = '\0';
+            int is_local;
+            SimboloVar *v = busca_variavel_info($3.str, &is_local);
             if (v == NULL) {
                 char msg[512];
                 sprintf(msg, "variavel '%s' nao declarada", $3.str);
                 erro_semantico(msg);
             } else {
                 v->inicializada = 1;
+                makeCodeRead($$.code, $3.str, is_local, v->offset);
             }
         }
     ;
@@ -335,20 +405,45 @@ leitura:
 escrita:
         WRITE '(' VARIABLE ')' ';'
         {
-            if (busca_variavel($3.str) == NULL) {
+            $$.code[0] = '\0';
+            int is_local;
+            SimboloVar *v = busca_variavel_info($3.str, &is_local);
+            if (v == NULL) {
                 char msg[512];
                 sprintf(msg, "variavel '%s' nao declarada", $3.str);
                 erro_semantico(msg);
+            } else {
+                char val[CODE_BUF]; val[0] = '\0';
+                if (is_local) makeCodeLoadVarLocal(val, $3.str, v->offset);
+                else           makeCodeLoadVarGlobal(val, $3.str);
+                makeCodeWrite($$.code, val, (v->tipo == T_STRING));
             }
         }
     |   WRITE '(' INTEGER ')' ';'
+        {
+            char val[CODE_BUF]; val[0] = '\0';
+            makeCodeLoadConst(val, $3.str);
+            $$.code[0] = '\0';
+            makeCodeWrite($$.code, val, 0);
+        }
     |   WRITE '(' FLOAT_CONST ')' ';'
+        {
+            char val[CODE_BUF]; val[0] = '\0';
+            makeCodeLoadConst(val, $3.str);
+            $$.code[0] = '\0';
+            makeCodeWrite($$.code, val, 0);
+        }
     |   WRITE '(' STRING_CONST ')' ';'
-    ;
+        {
+            $$.code[0] = '\0';
+            int l_str = novoLabel();
+            makeCodeWriteStringLiteral($$.code, $3.str, l_str);
+        }
 
 comando_return:
         RETURN expr ';'
         {
+            $$.code[0] = '\0';
             if (funcao_atual == NULL) {
                 erro_semantico("comando 'return' fora do escopo de uma funcao");
             } else {
@@ -359,6 +454,7 @@ comando_return:
                             funcao_atual->nome, tipo_para_str(funcao_atual->tipo_retorno), tipo_para_str($2.tipo));
                     erro_semantico(msg);
                 }
+                makeCodeReturn($$.code, $2.code);
             }
         }
     ;
@@ -370,6 +466,11 @@ chamada_funcao:
         {
             $$.tipo = finaliza_chamada();
             strncpy($$.str, chamada_nome, sizeof($$.str) - 1);
+            $$.code[0] = '\0';
+            for (int i = chamada_n_args - 1; i >= 0; i--) {
+                strcat($$.code, temp_arg_codes[i]);
+            }
+            makeCodeCallEnd($$.code, chamada_nome, chamada_n_args);
         }
     ;
 
@@ -379,47 +480,60 @@ lista_args_opt:
     ;
 
 lista_args:
-        lista_args ',' expr { empilha_arg($3.tipo); }
-    |   expr                { empilha_arg($1.tipo); }
+        lista_args ',' expr { empilha_arg($3.tipo, $3.code); }
+    |   expr                { empilha_arg($1.tipo, $1.code); }
     ;
 
 /* ---------------- expressoes ---------------- */
 
 expr:
-        INTEGER            { $$.tipo = T_INT; }
-    |   FLOAT_CONST         { $$.tipo = T_FLOAT; }
-    |   CHAR_CONST          { $$.tipo = T_CHAR; }
-    |   STRING_CONST        { $$.tipo = T_STRING; }
-    |   TRUE                { $$.tipo = T_BOOL; }
-    |   FALSE               { $$.tipo = T_BOOL; }
+        INTEGER            { $$.tipo = T_INT; makeCodeLoadConst($$.code, $1.str); }
+    |   FLOAT_CONST         { $$.tipo = T_FLOAT; makeCodeLoadConst($$.code, $1.str); }
+    |   CHAR_CONST          {
+                                $$.tipo = T_CHAR;
+                                char numlit[8];
+                                sprintf(numlit, "%d", (int)$1.str[0]);
+                                makeCodeLoadConst($$.code, numlit);
+                            }
+    |   STRING_CONST        { $$.tipo = T_STRING; $$.code[0] = '\0'; /* strings: sem codegen ainda (ver limitacao) */ }
+    |   TRUE                { $$.tipo = T_BOOL; makeCodeLoadConst($$.code, "1"); }
+    |   FALSE               { $$.tipo = T_BOOL; makeCodeLoadConst($$.code, "0"); }
     |   VARIABLE
         {
-            SimboloVar *v = busca_variavel($1.str);
+            int is_local;
+            SimboloVar *v = busca_variavel_info($1.str, &is_local);
             if (v == NULL) {
                 char msg[512];
                 sprintf(msg, "variavel '%s' nao declarada", $1.str);
                 erro_semantico(msg);
                 $$.tipo = T_INDEFINIDO;
+                $$.code[0] = '\0';
             } else {
                 $$.tipo = v->tipo;
+                if (is_local) makeCodeLoadVarLocal($$.code, $1.str, v->offset);
+                else           makeCodeLoadVarGlobal($$.code, $1.str);
             }
         }
-    |   chamada_funcao      { $$.tipo = $1.tipo; }
+    |   chamada_funcao      { $$.tipo = $1.tipo; strcpy($$.code, $1.code); }
     |   expr '+' expr       { $$.tipo = compativel($1.tipo, $3.tipo) ? $1.tipo : T_INDEFINIDO;
-                               if ($$.tipo == T_INDEFINIDO) erro_semantico("operandos de '+' com tipos incompativeis"); }
+                               if ($$.tipo == T_INDEFINIDO) erro_semantico("operandos de '+' com tipos incompativeis");
+                               strcpy($$.code, $1.code); makeCodeAdd($$.code, $3.code); }
     |   expr '-' expr       { $$.tipo = compativel($1.tipo, $3.tipo) ? $1.tipo : T_INDEFINIDO;
-                               if ($$.tipo == T_INDEFINIDO) erro_semantico("operandos de '-' com tipos incompativeis"); }
+                               if ($$.tipo == T_INDEFINIDO) erro_semantico("operandos de '-' com tipos incompativeis");
+                               strcpy($$.code, $1.code); makeCodeSub($$.code, $3.code); }
     |   expr '*' expr       { $$.tipo = compativel($1.tipo, $3.tipo) ? $1.tipo : T_INDEFINIDO;
-                               if ($$.tipo == T_INDEFINIDO) erro_semantico("operandos de '*' com tipos incompativeis"); }
+                               if ($$.tipo == T_INDEFINIDO) erro_semantico("operandos de '*' com tipos incompativeis");
+                               strcpy($$.code, $1.code); makeCodeMul($$.code, $3.code); }
     |   expr '/' expr       { $$.tipo = compativel($1.tipo, $3.tipo) ? $1.tipo : T_INDEFINIDO;
-                               if ($$.tipo == T_INDEFINIDO) erro_semantico("operandos de '/' com tipos incompativeis"); }
-    |   expr EQ expr        { $$.tipo = T_BOOL; }
-    |   expr NE expr        { $$.tipo = T_BOOL; }
-    |   expr LT expr        { $$.tipo = T_BOOL; }
-    |   expr LE expr        { $$.tipo = T_BOOL; }
-    |   expr GT expr        { $$.tipo = T_BOOL; }
-    |   expr GE expr        { $$.tipo = T_BOOL; }
-    |   NOT expr            { $$.tipo = T_BOOL; }
+                               if ($$.tipo == T_INDEFINIDO) erro_semantico("operandos de '/' com tipos incompativeis");
+                               strcpy($$.code, $1.code); makeCodeDiv($$.code, $3.code); }
+    |   expr EQ expr        { $$.tipo = T_BOOL; strcpy($$.code, $1.code); makeCodeRel($$.code, $3.code, "=="); }
+    |   expr NE expr        { $$.tipo = T_BOOL; strcpy($$.code, $1.code); makeCodeRel($$.code, $3.code, "!="); }
+    |   expr LT expr        { $$.tipo = T_BOOL; strcpy($$.code, $1.code); makeCodeRel($$.code, $3.code, "<"); }
+    |   expr LE expr        { $$.tipo = T_BOOL; strcpy($$.code, $1.code); makeCodeRel($$.code, $3.code, "<="); }
+    |   expr GT expr        { $$.tipo = T_BOOL; strcpy($$.code, $1.code); makeCodeRel($$.code, $3.code, ">"); }
+    |   expr GE expr        { $$.tipo = T_BOOL; strcpy($$.code, $1.code); makeCodeRel($$.code, $3.code, ">="); }
+    |   NOT expr            { $$.tipo = T_BOOL; strcpy($$.code, $2.code); makeCodeNot($$.code); }
     |   '(' expr ')'        { $$ = $2; }
     ;
 

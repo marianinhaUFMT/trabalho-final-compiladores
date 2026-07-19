@@ -23,6 +23,7 @@ typedef struct {
     char nome[MAX_NOME];
     Tipo tipo;
     int  inicializada;
+    int offset;
 } SimboloVar;
 
 typedef struct {
@@ -66,6 +67,8 @@ SimboloFuncao*  ts_func_busca(const char *nome);
 /* cria (ou retorna, se ja existir) a entrada do prototipo */
 SimboloFuncao*  ts_func_insere_prototipo(const char *nome, Tipo tipo_retorno);
 void            ts_func_adiciona_param(SimboloFuncao *f, const char *nome, Tipo tipo);
+SimboloVar* busca_variavel_info(const char *nome, int *is_local);
+int         tamanho_locais_atual(void);
 
 /* ---------- TS's ativas durante a analise ---------- */
 extern TabelaVariaveis ts_global;   /* variaveis de escopo global               */
@@ -73,6 +76,7 @@ extern TabelaVariaveis ts_local;    /* variaveis da funcao sendo processada     
 extern TabelaFuncoes   ts_funcoes;  /* prototipos/implementacoes de funcoes     */
 extern SimboloFuncao  *funcao_atual;/* funcao cujo corpo esta sendo analisado   */
 extern int             dentro_de_funcao; /* 0 = escopo global, 1 = dentro de funcao/main */
+extern int             inserindo_parametro; /* 1 = dentro da lista de parametros de uma funcao */
 
 void imprime_tabelas(void);
 

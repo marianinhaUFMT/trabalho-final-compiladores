@@ -7,4 +7,5 @@ int soma(int a, int b) {
 int main() {
     int x;
     x = soma(5, 3); // Chamada
+    return 0;
 }
