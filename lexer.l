@@ -47,16 +47,14 @@ int linha_atual = 1;
 
 [0-9]+\.[0-9]+ {
                 strcpy(yylval.c.str, yytext);
-                yylval.c.val_f = atof(yytext);
-                printf("[LEX] Float: %f\n",yylval.c.val_f);
+                printf("[LEX] Float: %s\n", yytext);
                 return FLOAT_CONST;
 
             }
 
 [0-9]+      { 	
                 strcpy(yylval.c.str, yytext);
-                yylval.c.val = atoi(yytext);
-		        printf("[LEX] Inteiro: %d\n",yylval.c.val);
+		        printf("[LEX] Inteiro: %s\n", yytext);
                 return INTEGER; 
             }
 
@@ -88,7 +86,7 @@ int linha_atual = 1;
 [ \t]+    	;
 
 .           { 
-                char msg[128];
+                char msg[256];
                 sprintf(msg, "[LEX ERROR] Caracter invalido '%s' na linha %d", yytext, linha_atual);
                 yyerror(msg); 
             }

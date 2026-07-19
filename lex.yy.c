@@ -911,26 +911,24 @@ YY_RULE_SETUP
 #line 48 "lexer.l"
 {
                 strcpy(yylval.c.str, yytext);
-                yylval.c.val_f = atof(yytext);
-                printf("[LEX] Float: %f\n",yylval.c.val_f);
+                printf("[LEX] Float: %s\n", yytext);
                 return FLOAT_CONST;
 
             }
 	YY_BREAK
 case 25:
 YY_RULE_SETUP
-#line 56 "lexer.l"
+#line 55 "lexer.l"
 { 	
                 strcpy(yylval.c.str, yytext);
-                yylval.c.val = atoi(yytext);
-		        printf("[LEX] Inteiro: %d\n",yylval.c.val);
+		        printf("[LEX] Inteiro: %s\n", yytext);
                 return INTEGER; 
             }
 	YY_BREAK
 case 26:
 /* rule 26 can match eol */
 YY_RULE_SETUP
-#line 63 "lexer.l"
+#line 61 "lexer.l"
 { 
                 yylval.c.str[0] = yytext[1]; // pega o caractere entre aspas simples
                 yylval.c.str[1] = '\0'; // adiciona o terminador nulo
@@ -941,7 +939,7 @@ YY_RULE_SETUP
 case 27:
 /* rule 27 can match eol */
 YY_RULE_SETUP
-#line 70 "lexer.l"
+#line 68 "lexer.l"
 { 
                 // tira as aspas para armazenar a string literal
                 strncpy(yylval.c.str, yytext+1, strlen(yytext)-2);
@@ -952,7 +950,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 28:
 YY_RULE_SETUP
-#line 78 "lexer.l"
+#line 76 "lexer.l"
 { 	
                 //strcpy(yylval.c.lex, yytext);
                 //yylval.c.val = *yytext;
@@ -963,29 +961,29 @@ YY_RULE_SETUP
 case 29:
 /* rule 29 can match eol */
 YY_RULE_SETUP
-#line 85 "lexer.l"
+#line 83 "lexer.l"
 { linha_atual++; }
 	YY_BREAK
 case 30:
 YY_RULE_SETUP
-#line 88 "lexer.l"
+#line 86 "lexer.l"
 ;
 	YY_BREAK
 case 31:
 YY_RULE_SETUP
-#line 90 "lexer.l"
+#line 88 "lexer.l"
 { 
-                char msg[128];
+                char msg[256];
                 sprintf(msg, "[LEX ERROR] Caracter invalido '%s' na linha %d", yytext, linha_atual);
                 yyerror(msg); 
             }
 	YY_BREAK
 case 32:
 YY_RULE_SETUP
-#line 96 "lexer.l"
+#line 94 "lexer.l"
 ECHO;
 	YY_BREAK
-#line 989 "lex.yy.c"
+#line 987 "lex.yy.c"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
@@ -1990,5 +1988,5 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 96 "lexer.l"
+#line 94 "lexer.l"
 

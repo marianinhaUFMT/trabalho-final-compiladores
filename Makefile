@@ -1,6 +1,6 @@
 
 compiler: parser.tab.c lex.yy.c tab_simb.c main.c tab_simb.h
-	$(CC) $(CFLAGS) -o comp parser.tab.c lex.yy.c ts.c main.c
+	$(CC) $(CFLAGS) -o comp parser.tab.c lex.yy.c tab_simb.c main.c
 
 parser.tab.c parser.tab.h: parser.y
 	bison -d parser.y

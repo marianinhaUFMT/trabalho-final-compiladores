@@ -118,13 +118,13 @@ static void empilha_arg(Tipo t) {
 static Tipo finaliza_chamada(void) {
     SimboloFuncao *f = ts_func_busca(chamada_nome);
     if (f == NULL || !f->prototipada) {
-        char msg[160];
+        char msg[512];
         sprintf(msg, "chamada da funcao '%s' nao declarada (sem prototipo)", chamada_nome);
         erro_semantico(msg);
         return T_INDEFINIDO;
     }
     if (chamada_n_args != f->n_params) {
-        char msg[160];
+        char msg[512];
         sprintf(msg, "funcao '%s' espera %d parametro(s), mas recebeu %d",
                 chamada_nome, f->n_params, chamada_n_args);
         erro_semantico(msg);
@@ -132,7 +132,7 @@ static Tipo finaliza_chamada(void) {
     }
     for (int i = 0; i < chamada_n_args; i++) {
         if (!compativel(chamada_args[i], f->params[i].tipo)) {
-            char msg[192];
+            char msg[512];
             sprintf(msg, "parametro %d da chamada de '%s' incompativel: esperado %s, recebido %s",
                     i + 1, chamada_nome, tipo_para_str(f->params[i].tipo), tipo_para_str(chamada_args[i]));
             erro_semantico(msg);
@@ -1335,7 +1335,7 @@ yyreduce:
         {
             TabelaVariaveis *ts = dentro_de_funcao ? &ts_local : &ts_global;
             if (!ts_var_insere(ts, (yyvsp[-1].c).str, (yyvsp[-2].c).tipo)) {
-                char msg[160];
+                char msg[512];
                 sprintf(msg, "variavel '%s' ja declarada neste escopo", (yyvsp[-1].c).str);
                 erro_semantico(msg);
             }
@@ -1375,7 +1375,7 @@ yyreduce:
         {
             SimboloFuncao *existente = ts_func_busca(temp_func.nome);
             if (existente != NULL && existente->prototipada) {
-                char msg[160];
+                char msg[512];
                 sprintf(msg, "funcao '%s' ja possui prototipo (redefinicao nao permitida)", temp_func.nome);
                 erro_semantico(msg);
             } else {
@@ -1396,7 +1396,7 @@ yyreduce:
         {
             SimboloFuncao *f = ts_func_busca(temp_func.nome);
             if (f == NULL || !f->prototipada) {
-                char msg[160];
+                char msg[512];
                 sprintf(msg, "funcao '%s' implementada sem prototipo previo", temp_func.nome);
                 erro_semantico(msg);
                 f = ts_func_insere_prototipo(temp_func.nome, temp_func.tipo_retorno);
@@ -1414,12 +1414,12 @@ yyreduce:
                     }
                 }
                 if (!assinatura_ok) {
-                    char msg[192];
+                    char msg[512];
                     sprintf(msg, "implementacao de '%s' nao corresponde ao prototipo declarado", temp_func.nome);
                     erro_semantico(msg);
                 }
                 if (f->implementada) {
-                    char msg[160];
+                    char msg[512];
                     sprintf(msg, "funcao '%s' ja foi implementada (redefinicao nao permitida)", temp_func.nome);
                     erro_semantico(msg);
                 }
@@ -1443,7 +1443,7 @@ yyreduce:
 #line 238 "parser.y"
         {
             if (!funcao_atual->tem_return) {
-                char msg[160];
+                char msg[512];
                 sprintf(msg, "funcao '%s' nao possui comando 'return' (retorno obrigatorio)", funcao_atual->nome);
                 erro_semantico(msg);
             }
@@ -1487,11 +1487,11 @@ yyreduce:
         {
             SimboloVar *v = busca_variavel((yyvsp[-3].c).str);
             if (v == NULL) {
-                char msg[160];
+                char msg[512];
                 sprintf(msg, "variavel '%s' nao declarada", (yyvsp[-3].c).str);
                 erro_semantico(msg);
             } else if (!compativel(v->tipo, (yyvsp[-1].c).tipo)) {
-                char msg[192];
+                char msg[512];
                 sprintf(msg, "atribuicao incompativel: variavel '%s' e do tipo %s, mas expressao e do tipo %s",
                         (yyvsp[-3].c).str, tipo_para_str(v->tipo), tipo_para_str((yyvsp[-1].c).tipo));
                 erro_semantico(msg);
@@ -1507,7 +1507,7 @@ yyreduce:
         {
             SimboloVar *v = busca_variavel((yyvsp[-2].c).str);
             if (v == NULL) {
-                char msg[160];
+                char msg[512];
                 sprintf(msg, "variavel '%s' nao declarada", (yyvsp[-2].c).str);
                 erro_semantico(msg);
             } else {
@@ -1521,7 +1521,7 @@ yyreduce:
 #line 337 "parser.y"
         {
             if (busca_variavel((yyvsp[-2].c).str) == NULL) {
-                char msg[160];
+                char msg[512];
                 sprintf(msg, "variavel '%s' nao declarada", (yyvsp[-2].c).str);
                 erro_semantico(msg);
             }
@@ -1537,7 +1537,7 @@ yyreduce:
             } else {
                 funcao_atual->tem_return = 1;
                 if (!compativel(funcao_atual->tipo_retorno, (yyvsp[-1].c).tipo)) {
-                    char msg[192];
+                    char msg[512];
                     sprintf(msg, "tipo de retorno incompativel: funcao '%s' retorna %s, mas expressao e do tipo %s",
                             funcao_atual->nome, tipo_para_str(funcao_atual->tipo_retorno), tipo_para_str((yyvsp[-1].c).tipo));
                     erro_semantico(msg);
@@ -1615,7 +1615,7 @@ yyreduce:
         {
             SimboloVar *v = busca_variavel((yyvsp[0].c).str);
             if (v == NULL) {
-                char msg[160];
+                char msg[512];
                 sprintf(msg, "variavel '%s' nao declarada", (yyvsp[0].c).str);
                 erro_semantico(msg);
                 (yyval.c).tipo = T_INDEFINIDO;
