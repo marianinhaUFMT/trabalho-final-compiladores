@@ -1,40 +1,43 @@
-%{ 
-    #include <stdio.h>
-    #include <stdlib.h> 
-    #include <string.h>
-    void yyerror(char *); 
-    #include "tab_simb.tab.h"
-    int linha_atual = 1; // detalha erros 
-%} 
+%{
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "tab_simb.h"
+#include "parser.tab.h"
 
-%% 
-// palavras reservadas
-"int"       { return INT; }
-"float"     { return FLOAT; }
-"char"      { return CHAR; }
-"bool"      { return BOOL; }
-"string"    { return STRING; }
-"if"        { return IF; }
-"else"      { return ELSE; }
-"while"     { return WHILE; }
-"read"      { return READ; }
-"write"     { return WRITE; }
-"return"    { return RETURN; }
-"True"      { return TRUE; }
-"False"     { return FALSE; }
+void yyerror(const char *);
+int linha_atual = 1;
+%}
 
-"main"      { return MAIN; }
+%option noyywrap
 
-// operadores logicos e relacionais
-"=="        { return EQ; }
-"!="        { return NE; }
-"!"         { return NOT; }
-"<"         { return LT; }
-"<="        { return LE; }
-">"         { return GT; }
-">="        { return GE; }
-
+%%
 "//".*    { /* ignora comentário */ }
+
+"int"                   { yylval.c.tipo = T_INT;    return INT; }
+"float"                 { yylval.c.tipo = T_FLOAT;  return FLOAT; }
+"char"                  { yylval.c.tipo = T_CHAR;   return CHAR; }
+"bool"                  { yylval.c.tipo = T_BOOL;   return BOOL; }
+"string"                { yylval.c.tipo = T_STRING; return STRING; }
+
+"if"                    { return IF; }
+"else"                  { return ELSE; }
+"while"                 { return WHILE; }
+"read"                  { return READ; }
+"write"                 { return WRITE; }
+"return"                { return RETURN; }
+"True"                  { return TRUE; }
+"False"                 { return FALSE; }
+"main"                  { return MAIN; }
+
+"=="                    { return EQ; }
+"!="                    { return NE; }
+"!"                     { return NOT; }
+"<="                    { return LE; }
+"<"                     { return LT; }
+">="                    { return GE; }
+">"                     { return GT; }
+
 
 [a-zA-Z_][a-zA-Z0-9_]* { 	
                 printf("[LEX] Variavel '%s'\n",yytext);
@@ -82,7 +85,6 @@
 "\n"        { linha_atual++; }
 
 
-// ignora espacos em branco
 [ \t]+    	;
 
 .           { 
@@ -92,7 +94,3 @@
             }
 
 %%
- 
-int yywrap(void) { 
-    return 1; 
-} 
