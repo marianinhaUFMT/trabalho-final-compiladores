@@ -20,12 +20,21 @@
 "read"      { return READ; }
 "write"     { return WRITE; }
 "return"    { return RETURN; }
+"True"      { return TRUE; }
+"False"     { return FALSE; }
 
-// operadores logicos
+"main"      { return MAIN; }
+
+// operadores logicos e relacionais
 "=="        { return EQ; }
 "!="        { return NE; }
+"!"         { return NOT; }
+"<"         { return LT; }
 "<="        { return LE; }
+">"         { return GT; }
 ">="        { return GE; }
+
+"//".*    { /* ignora comentário */ }
 
 [a-zA-Z_][a-zA-Z0-9_]* { 	
                 printf("[LEX] Variavel '%s'\n",yytext);
@@ -33,38 +42,54 @@
                 return VARIABLE; 
             } 
 
+[0-9]+\.[0-9]+ {
+                strcpy(yylval.c.str, yytext);
+                yylval.c.val_f = atof(yytext);
+                printf("[LEX] Float: %f\n",yylval.c.val_f);
+                return FLOAT_CONST;
+
+            }
+
 [0-9]+      { 	
                 strcpy(yylval.c.str, yytext);
                 yylval.c.val = atoi(yytext);
 		        printf("[LEX] Inteiro: %d\n",yylval.c.val);
                 return INTEGER; 
             }
-[0-9]+\.[0-9]+ {
-                strcpy(yylval.c.str, yytext);
-                yylval.c.val_f = atof(yytext);
-                printf("[LEX] Float: %f\n",yylval.c.val_f);
-                return FLOAT;
 
+'[^']'      { 
+                yylval.c.str[0] = yytext[1]; // pega o caractere entre aspas simples
+                yylval.c.str[1] = '\0'; // adiciona o terminador nulo
+                printf("[LEX] Caractere: %c\n",yylval.c.str[0]);
+                return CHAR_CONST; 
             }
             
 \"[^\"]*\"  { 
                 // tira as aspas para armazenar a string literal
-                strcpy(yylval.c.str, yytext+1, strlen(yytext)-2);
+                strncpy(yylval.c.str, yytext+1, strlen(yytext)-2);
                 yylval.c.str[strlen(yytext)-2] = '\0'; // adiciona o terminador nulo
                 printf("[LEX] String: %s\n",yytext);
-                return STRING; 
+                return STRING_CONST; 
             }
                 
-[=+-/*()]   { 	
+[=+\-/*(){};,]   { 	
                 //strcpy(yylval.c.lex, yytext);
                 //yylval.c.val = *yytext;
                 printf("[LEX] Operador: %c\n", yytext[0]);
                 return *yytext; 
-            } 
+            }
 
-[ \t\n]    	; 
+"\n"        { linha_atual++; }
 
-.             	yyerror("[LEX] [ERROR] Caracter invalido"); 
+
+// ignora espacos em branco
+[ \t]+    	;
+
+.           { 
+                char msg[128];
+                sprintf(msg, "[LEX ERROR] Caracter invalido '%s' na linha %d", yytext, linha_atual);
+                yyerror(msg); 
+            }
 
 %%
  
