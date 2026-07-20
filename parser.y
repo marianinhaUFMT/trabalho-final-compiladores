@@ -334,7 +334,7 @@ comando:
     |   chamada_funcao ';'
         {
             strcpy($$.code, $1.code);
-            strcat($$.code, "pop eax ; retorno da chamada descartado\n");
+            /* não precisa fazer nada com o eax se o retorno for ignorado */
         }
     ;
 
@@ -480,8 +480,20 @@ lista_args_opt:
     ;
 
 lista_args:
-        lista_args ',' expr { empilha_arg($3.tipo, $3.code); }
-    |   expr                { empilha_arg($1.tipo, $1.code); }
+        lista_args ',' expr 
+        { 
+            char arg_code[CODE_BUF];
+            arg_code[0] = '\0';
+            makeCodeCallPushArg(arg_code, $3.code);
+            empilha_arg($3.tipo, arg_code); 
+        }
+    |   expr                
+        { 
+            char arg_code[CODE_BUF];
+            arg_code[0] = '\0';
+            makeCodeCallPushArg(arg_code, $1.code);
+            empilha_arg($1.tipo, arg_code); 
+        }
     ;
 
 /* ---------------- expressoes ---------------- */
