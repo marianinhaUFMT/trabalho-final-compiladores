@@ -4,30 +4,33 @@ Trabalho Final da disciplina **Laboratório de Compiladores** do curso de **Bach
 
 ## 📖 Descrição
 
-Este projeto consiste na implementação de um compilador para uma versão simplificada da linguagem C utilizando **Flex** e **Bison**. O compilador realiza as etapas de análise léxica, sintática e semântica, gerando como saída código em **Assembly x86** para programas escritos na linguagem especificada.
+Este projeto consiste na implementação de um compilador para uma versão simplificada da linguagem C utilizando as ferramentas **Flex** e **Bison**. O compilador realiza todas as etapas do processo de compilação (análise léxica, sintática, semântica e geração de código), produzindo como saída o código de montagem em **Assembly x86 (32-bits, sintaxe NASM)** correspondente.
 
-Além da geração de código, o compilador identifica e informa erros léxicos, sintáticos e semânticos, indicando a linha e a posição onde ocorreram.
+Caso o código-fonte possua erros (léxicos, sintáticos ou semânticos), o compilador detalha a falha informando o tipo de erro, descrição e a linha exata no terminal.
 
 ## ✨ Funcionalidades
 
-- Análise léxica com Flex
-- Análise sintática Bottom-Up com Bison
-- Análise semântica
-- Gerenciamento de tabelas de símbolos
-  - Escopo global
-  - Escopos locais
-  - Tabela de funções
-- Geração de código Assembly x86
-- Detecção de erros:
-  - Léxicos
-  - Sintáticos
-  - Semânticos
-- Impressão das tabelas de símbolos ao final da compilação
+- **Análise Léxica (Flex):** Reconhecimento de tokens, palavras reservadas, literais, operadores e controle de linha.
+- **Análise Sintática (Bison):** Análise bottom-up LALR(1) para construção da árvore sintática.
+- **Análise Semântica:**
+  - Checagem de compatibilidade de tipos.
+  - Verificação de declaração/redeclaração de variáveis no mesmo escopo.
+  - Validação de protótipos de funções, parâmetros e retornos obrigatórios.
+- **Tabelas de Símbolos:**
+  - Tabela de Variáveis Globais.
+  - Tabela de Variáveis Locais com escopo encadeado (com precedência do escopo local).
+  - Tabela de Funções separada com validação de assinaturas.
+- **Geração de Código Assembly x86:**
+  - Manipulação da pilha para alocação de variáveis locais via offsets em `$ebp`.
+  - Passagem de argumentos de funções pela pilha em ordem inversa.
+  - Prólogo, epílogo e retorno armazenado no registrador `$eax`.
+  - Controle de fluxo (`if`, `if/else`, `while`).
+  - Suporte às instruções de Entrada e Saída (`read` e `write`).
+- **Relatório Final:** Impressão gráfica das tabelas de símbolos após o término da compilação.
 
 ## 📝 Recursos da Linguagem
 
 ### Tipos suportados
-
 - `int`
 - `float`
 - `char`
@@ -35,111 +38,91 @@ Além da geração de código, o compilador identifica e informa erros léxicos,
 - `string`
 
 ### Estruturas suportadas
-
-- Declaração de variáveis
-- Escopo por blocos (`{}`)
-- Atribuições
-- Expressões aritméticas
-- Expressões relacionais
-- Expressões lógicas
-- Comando `if`
-- Comando `if/else`
-- Laço `while`
-- Entrada de dados (`read`)
-- Saída de dados (`write`)
-- Declaração e implementação de funções
-- Protótipos de funções
-- Chamada de funções
-- Retorno com `return`
+- Declaração de variáveis (`<tipo> <identificador>;`)
+- Atribuições (`<identificador> = <expressão>;`)
+- Operadores aritméticos (`+`, `-`, `*`, `/`)
+- Operadores lógicos e relacionais (`==`, `!=`, `!`, `<`, `<=`, `>`, `>=`)
+- Comandos condicionais (`if` e `if/else`)
+- Laço de repetição (`while`)
+- Entrada e Saída de dados (`read` e `write`)
+- Protótipo de funções (`<tipo> <identificador>(<params>);`)
+- Chamada e implementação de funções com o comando `return`
 
 ## 📂 Estrutura do Projeto
 
+
 ```
+
 .
-├── lexer.l             # Analisador léxico (Flex)
-├── parser.y            # Analisador sintático (Bison)
-├── symbols.*           # Tabelas de símbolos
-├── semantic.*          # Análise semântica
-├── codegen.*           # Geração de código Assembly
-├── examples/           # Programas de exemplo
-├── output/             # Arquivos Assembly gerados
-├── Makefile
-└── README.md
+├── lexer.l             # Analisador Léxico (Flex)
+├── parser.y            # Analisador Sintático / Semântico (Bison)
+├── tab_simb.h          # Definições das estruturas das Tabelas de Símbolos
+├── tab_simb.c          # Implementação da TS (globais, locais e funções)
+├── codeGeneration.h    # Protótipos para emissão de código Assembly x86
+├── codeGeneration.c    # Gerador de instruções x86 (pilha, rótulos, prólogo/epílogo)
+├── main.c              # Ponto de entrada do compilador
+├── Makefile            # Automação de compilação do compilador
+└── README.md           # Documentação do projeto
+
 ```
 
-> A estrutura pode variar conforme a implementação do projeto.
+## ⚙️ Requisitos e Tecnologias
 
-## ⚙️ Tecnologias Utilizadas
+- **GCC** (suporte a 32-bits via `-m32` e bibliotecas `gcc-multilib`)
+- **Flex**
+- **Bison**
+- **NASM** (Netwide Assembler)
+- **Make**
 
-- C
-- Flex
-- Bison
-- GCC
-- Make
+## 🚀 Como Compilar o Compilador
 
-## 🚀 Como Compilar
+Para compilar o código do próprio compilador (`comp`), execute:
 
 ```bash
 make
+
 ```
 
-ou
+Para limpar os arquivos objetos e executáveis gerados:
 
 ```bash
-flex lexer.l
-bison -d parser.y
-gcc lex.yy.c parser.tab.c -o compilador -lfl
+make clean
+
 ```
 
-## ▶️ Como Executar
+## ▶️ Como Executar e Gerar o Código Assembly
+
+Execute o compilador informando o arquivo com o código em C simplificado:
 
 ```bash
-./compilador exemplo.c
+./comp arquivo_de_teste.c
+
 ```
 
-O compilador irá gerar o código Assembly correspondente ao programa de entrada.
+Se o código estiver correto, o compilador exibirá as Tabelas de Símbolos no terminal e gerará o arquivo **`saida.asm`** com o código Assembly x86.
 
-## 📌 Exemplo
+## 🛠️ Como Montar e Executar o Programa Final (Assembly)
 
-### Entrada
+Para transformar o código `saida.asm` em um executável real do sistema operacional, utilize o **NASM** e o **GCC** integrando com o módulo `io.c`:
 
-```c
-int soma(int a, int b);
+1. **Montar o arquivo Assembly:**
+```bash
+nasm -f elf32 saida.asm -o saida.o
 
-int soma(int a, int b){
-    return a + b;
-}
-
-int main(){
-    int x;
-    x = soma(5,3);
-    return 0;
-}
 ```
 
-### Saída
 
-O compilador gera o código equivalente em Assembly x86, incluindo:
+2. **Compilar e linkar com as rotinas de I/O em 32-bits:**
+```bash
+gcc -m32 saida.o io.c -o programa_final
 
-- prólogo e epílogo das funções;
-- passagem de parâmetros pela pilha;
-- instruções `call`;
-- retorno pelo registrador `eax`.
+```
 
-## 📚 Conceitos Aplicados
+3. **Executar o programa binário:**
+```bash
+./programa_final
 
-- Compiladores
-- Autômatos Finitos
-- Expressões Regulares
-- Gramáticas Livres de Contexto
-- Parsing Bottom-Up (LALR)
-- Análise Léxica
-- Análise Sintática
-- Análise Semântica
-- Tabelas de Símbolos
-- Escopos
-- Geração de Código Intermediário
-- Geração de Código Assembly
+```
 
 ## 👨‍🏫 Disciplina
 
@@ -147,12 +130,14 @@ O compilador gera o código equivalente em Assembly x86, incluindo:
 
 Universidade Federal de Mato Grosso (UFMT)
 
+Instituto de Ciências Exatas e da Terra (ICET)
+
 Professor: **Dr. Ivairton M. Santos**
 
 ## 👥 Autores
 
-- Mariana Sanchez Pedroni
-- Anna Bheatryz Martins dos Santos
+* **Mariana Sanchez Pedroni**
+* **Anna Bheatryz Martins dos Santos**
 
 ## 📄 Licença
 
