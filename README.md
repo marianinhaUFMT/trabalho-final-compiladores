@@ -101,28 +101,6 @@ Execute o compilador informando o arquivo com o código em C simplificado:
 
 Se o código estiver correto, o compilador exibirá as Tabelas de Símbolos no terminal e gerará o arquivo **`saida.asm`** com o código Assembly x86.
 
-## 🛠️ Como Montar e Executar o Programa Final (Assembly)
-
-Para transformar o código `saida.asm` em um executável real do sistema operacional, utilize o **NASM** e o **GCC** integrando com o módulo `io.c`:
-
-1. **Montar o arquivo Assembly:**
-```bash
-nasm -f elf32 saida.asm -o saida.o
-
-```
-
-
-2. **Compilar e linkar com as rotinas de I/O em 32-bits:**
-```bash
-gcc -m32 saida.o io.c -o programa_final
-
-```
-
-3. **Executar o programa binário:**
-```bash
-./programa_final
-
-```
 
 ## 👨‍🏫 Disciplina
 
