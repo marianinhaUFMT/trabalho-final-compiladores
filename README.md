@@ -114,8 +114,8 @@ Professor: **Dr. Ivairton M. Santos**
 
 ## 👥 Autores
 
-* **Mariana Sanchez Pedroni**
 * **Anna Bheatryz Martins dos Santos**
+* **Mariana Sanchez Pedroni**
 
 ## 📄 Licença
 
