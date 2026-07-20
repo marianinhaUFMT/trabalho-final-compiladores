@@ -25,8 +25,11 @@ int main(int argc, char const *argv[]) {
         return EXIT_FAILURE;
     }
 
-    ts_var_init(&ts_global);
-    ts_var_init(&ts_local);
+    /* Inicializa o escopo global e a pilha de escopos encadeados */
+    escopo_global = criar_escopo(NULL);
+    escopo_atual = escopo_global;
+    
+    /* Inicializa a tabela de funcoes */
     ts_func_init(&ts_funcoes);
 
     int ret = yyparse();

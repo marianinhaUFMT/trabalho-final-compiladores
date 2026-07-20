@@ -6,7 +6,7 @@
 #define MAX_FUNCS   100
 #define MAX_PARAMS  20
 
-/* ---------- Tipos ---------- */
+/* ---------- Tipos Primitivos ---------- */
 typedef enum {
     T_INT,
     T_FLOAT,
@@ -18,30 +18,39 @@ typedef enum {
 
 const char* tipo_para_str(Tipo t);
 
-/* ---------- Tabela de variaveis ---------- */
+/* ---------- Estrutura de Símbolo (Variável/Parâmetro) ---------- */
 typedef struct {
     char nome[MAX_NOME];
     Tipo tipo;
     int  inicializada;
-    int offset;
+    int  offset; /* Deslocamento x86 em relação ao EBP */
 } SimboloVar;
 
-typedef struct {
+/* ---------- Estrutura do Escopo Encadeado ---------- */
+typedef struct Escopo {
     SimboloVar vars[MAX_VARS];
     int n;
-} TabelaVariaveis;
+    struct Escopo *pai; /* Ponteiro de encadeamento hierárquico (Pai/Escopo Superior) */
+} Escopo;
 
-void        ts_var_init(TabelaVariaveis *ts);
-/* retorna 1 se inseriu, 0 se ja existia (redeclaracao) */
-int         ts_var_insere(TabelaVariaveis *ts, const char *nome, Tipo tipo);
-SimboloVar* ts_var_busca(TabelaVariaveis *ts, const char *nome);
+/* ---------- Funções de Gerenciamento da Pilha de Escopos ---------- */
+Escopo* criar_escopo(Escopo *pai);
+void    entra_escopo(void);
+void    sai_escopo(void);
 
-/* Busca combinada: TS local (prioridade) e depois TS global */
+/* Insere variável no escopo ATUAL */
+int     ts_var_insere(Escopo *e, const char *nome, Tipo tipo);
+
+/* Busca restrita ao escopo informado */
+SimboloVar* ts_var_busca_no_escopo(Escopo *e, const char *nome);
+
+/* Busca Combinada Encadeada: Percorre do escopo_atual subindo pelos pais até o escopo_global */
 SimboloVar* busca_variavel(const char *nome);
-/* Marca a variavel (local ou global, na ordem de prioridade) como inicializada */
-void        marca_inicializada(const char *nome);
+SimboloVar* busca_variavel_info(const char *nome, int *is_local);
 
-/* ---------- Tabela de funcoes ---------- */
+void    marca_inicializada(const char *nome);
+
+/* ---------- Tabela de Funções ---------- */
 typedef struct {
     char nome[MAX_NOME];
     Tipo tipo;
@@ -52,9 +61,9 @@ typedef struct {
     Tipo       tipo_retorno;
     Parametro  params[MAX_PARAMS];
     int        n_params;
-    int        prototipada;   /* 1 quando ja apareceu o prototipo  */
-    int        implementada;  /* 1 quando ja apareceu a definicao  */
-    int        tem_return;    /* 1 quando o corpo possui um return */
+    int        prototipada;   /* 1 quando possui protótipo  */
+    int        implementada;  /* 1 quando possui definição  */
+    int        tem_return;    /* 1 quando contém comando return */
 } SimboloFuncao;
 
 typedef struct {
@@ -64,19 +73,18 @@ typedef struct {
 
 void            ts_func_init(TabelaFuncoes *ts);
 SimboloFuncao*  ts_func_busca(const char *nome);
-/* cria (ou retorna, se ja existir) a entrada do prototipo */
 SimboloFuncao*  ts_func_insere_prototipo(const char *nome, Tipo tipo_retorno);
 void            ts_func_adiciona_param(SimboloFuncao *f, const char *nome, Tipo tipo);
-SimboloVar* busca_variavel_info(const char *nome, int *is_local);
-int         tamanho_locais_atual(void);
 
-/* ---------- TS's ativas durante a analise ---------- */
-extern TabelaVariaveis ts_global;   /* variaveis de escopo global               */
-extern TabelaVariaveis ts_local;    /* variaveis da funcao sendo processada     */
-extern TabelaFuncoes   ts_funcoes;  /* prototipos/implementacoes de funcoes     */
-extern SimboloFuncao  *funcao_atual;/* funcao cujo corpo esta sendo analisado   */
-extern int             dentro_de_funcao; /* 0 = escopo global, 1 = dentro de funcao/main */
-extern int             inserindo_parametro; /* 1 = dentro da lista de parametros de uma funcao */
+int             tamanho_locais_atual(void);
+
+/* ---------- Variáveis Globais de Estado do Compilador ---------- */
+extern Escopo        *escopo_global;     /* Escopo base (pai = NULL) */
+extern Escopo        *escopo_atual;      /* Topo da pilha de escopos ativos */
+extern TabelaFuncoes  ts_funcoes;        /* Tabela de protótipos/funções */
+extern SimboloFuncao *funcao_atual;      /* Função sob análise */
+extern int            dentro_de_funcao;  /* Controle de escopo de função */
+extern int            inserindo_parametro; /* Controle de cálculo de offset x86 */
 
 void imprime_tabelas(void);
 

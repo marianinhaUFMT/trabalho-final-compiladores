@@ -139,8 +139,8 @@ declaracao_variavel:
         tipo VARIABLE ';'
         {
             $$.code[0] = '\0';
-            TabelaVariaveis *ts = dentro_de_funcao ? &ts_local : &ts_global;
-            if (!ts_var_insere(ts, $2.str, $1.tipo)) {
+            /* Insere a variavel no escopo ativo (escopo_atual) */
+            if (!ts_var_insere(escopo_atual, $2.str, $1.tipo)) {
                 char msg[512];
                 sprintf(msg, "variavel '%s' ja declarada neste escopo", $2.str);
                 erro_semantico(msg);
@@ -150,16 +150,10 @@ declaracao_variavel:
                 makeCodeDeclGlobal(buf, $2.str);
                 fprintf(output_file, "%s", buf);
             }
-            /* variavel local: nao gera codigo aqui, apenas reserva espaco via offset na TS */
         }
     ;
 
-/* ---------------- assinatura compartilhada (prototipo e implementacao) ----------------
-   Unificada em uma unica regra para nao gerar conflito reduce/reduce: prototipo e
-   implementacao compartilham o mesmo prefixo "tipo VARIABLE ( lista_params )" e so se
-   distinguem pelo token seguinte (';' ou '{'). Se cada um tivesse sua propria acao
-   embutida logo apos '(' o parser LALR nao teria como decidir qual delas reduzir
-   naquele ponto (lookahead insuficiente). */
+/* ---------------- assinatura compartilhada ---------------- */
 
 assinatura_funcao:
         tipo VARIABLE '('
@@ -249,12 +243,15 @@ definicao_funcao:
             f->implementada = 1;
             funcao_atual = f;
             dentro_de_funcao = 1;
-            ts_var_init(&ts_local);
-            /* parametros da funcao se comportam como variaveis locais, ja inicializadas */
+
+            /* Entra em um novo escopo local encadeado */
+            entra_escopo();
+
+            /* Parametros da funcao se comportam como variaveis locais */
             inserindo_parametro = 1;
             for (int i = 0; i < temp_func.n_params; i++) {
-                ts_var_insere(&ts_local, temp_func.params[i].nome, temp_func.params[i].tipo);
-                SimboloVar *pv = ts_var_busca(&ts_local, temp_func.params[i].nome);
+                ts_var_insere(escopo_atual, temp_func.params[i].nome, temp_func.params[i].tipo);
+                SimboloVar *pv = ts_var_busca_no_escopo(escopo_atual, temp_func.params[i].nome);
                 if (pv) pv->inicializada = 1;
             }
             inserindo_parametro = 0;
@@ -273,6 +270,10 @@ definicao_funcao:
             fprintf(output_file, "%s", prolog);
             fprintf(output_file, "%s", $4.code);
             fprintf(output_file, "%s", epilog);
+
+            /* Sai do escopo local e restaura o escopo pai */
+            sai_escopo();
+
             dentro_de_funcao = 0;
             funcao_atual = NULL;
         }
@@ -292,7 +293,9 @@ funcao_main:
             f->implementada = 1;
             funcao_atual = f;
             dentro_de_funcao = 1;
-            ts_var_init(&ts_local);
+
+            /* Entra no escopo local da main */
+            entra_escopo();
         }
         '{' lista_comandos '}'
         {
@@ -307,6 +310,10 @@ funcao_main:
             fprintf(output_file, "%s", prolog);
             fprintf(output_file, "%s", $7.code);
             fprintf(output_file, "%s", epilog);
+
+            /* Sai do escopo da main */
+            sai_escopo();
+
             dentro_de_funcao = 0;
             funcao_atual = NULL;
         }
@@ -334,7 +341,6 @@ comando:
     |   chamada_funcao ';'
         {
             strcpy($$.code, $1.code);
-            /* não precisa fazer nada com o eax se o retorno for ignorado */
         }
     ;
 
@@ -507,7 +513,7 @@ expr:
                                 sprintf(numlit, "%d", (int)$1.str[0]);
                                 makeCodeLoadConst($$.code, numlit);
                             }
-    |   STRING_CONST        { $$.tipo = T_STRING; $$.code[0] = '\0'; /* strings: sem codegen ainda (ver limitacao) */ }
+    |   STRING_CONST        { $$.tipo = T_STRING; $$.code[0] = '\0'; }
     |   TRUE                { $$.tipo = T_BOOL; makeCodeLoadConst($$.code, "1"); }
     |   FALSE               { $$.tipo = T_BOOL; makeCodeLoadConst($$.code, "0"); }
     |   VARIABLE

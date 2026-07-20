@@ -1,13 +1,14 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "tab_simb.h"
 
-TabelaVariaveis ts_global;
-TabelaVariaveis ts_local;
-TabelaFuncoes   ts_funcoes;
-SimboloFuncao  *funcao_atual = NULL;
-int             dentro_de_funcao = 0;
-int             inserindo_parametro = 0;
+Escopo        *escopo_global = NULL;
+Escopo        *escopo_atual = NULL;
+TabelaFuncoes  ts_funcoes;
+SimboloFuncao *funcao_atual = NULL;
+int            dentro_de_funcao = 0;
+int            inserindo_parametro = 0;
 
 const char* tipo_para_str(Tipo t) {
     switch (t) {
@@ -20,61 +21,96 @@ const char* tipo_para_str(Tipo t) {
     }
 }
 
-/* ---------------- variaveis ---------------- */
+/* ---------------- Gerenciamento do Encadeamento de Escopos ---------------- */
 
-void ts_var_init(TabelaVariaveis *ts) {
-    ts->n = 0;
+Escopo* criar_escopo(Escopo *pai) {
+    Escopo *novo = (Escopo*) malloc(sizeof(Escopo));
+    if (!novo) {
+        fprintf(stderr, "[ERRO COMPILADOR] Falha na alocação de memória para Escopo.\n");
+        exit(EXIT_FAILURE);
+    }
+    novo->n = 0;
+    novo->pai = pai; /* Estabelece a ligação na cadeia de escopos */
+    return novo;
 }
 
-int ts_var_insere(TabelaVariaveis *ts, const char *nome, Tipo tipo) {
-    if (ts_var_busca(ts, nome) != NULL) {
-        return 0; /* já existe: erro de redeclaração */
-    }
-    
-    int idx = ts->n;
-    strncpy(ts->vars[idx].nome, nome, MAX_NOME - 1);
-    ts->vars[idx].nome[MAX_NOME - 1] = '\0';
-    ts->vars[idx].tipo = tipo;
-    ts->vars[idx].inicializada = 0;
-
-    // Se estivermos manipulando a tabela local (ts_local)
-    if (ts == &ts_local) {
-        if (inserindo_parametro) {
-            /* Parâmetros em x86 entram empilhados antes do EBP.
-               O primeiro parâmetro fica em [ebp+8], o segundo em [ebp+12], etc. */
-            ts->vars[idx].offset = 8 + (idx * 4);
-        } else {
-            /* Variáveis locais ficam abaixo do EBP (valores negativos).
-               Se a função já tem parâmetros inseridos antes, precisamos desconsiderar 
-               a contagem de parâmetros para calcular o offset local. */
-            int n_locais_puras = 0;
-            for(int i = 0; i < idx; i++) {
-                if(ts->vars[i].offset < 0) n_locais_puras++;
-            }
-            ts->vars[idx].offset = -4 - (n_locais_puras * 4);
-        }
-    } else {
-        ts->vars[idx].offset = 0; // Globais usam rótulos de memória, não offsets
-    }
-
-    ts->n++;
-    return 1;
+void entra_escopo(void) {
+    escopo_atual = criar_escopo(escopo_atual);
 }
 
-SimboloVar* ts_var_busca(TabelaVariaveis *ts, const char *nome) {
-    for (int i = 0; i < ts->n; i++) {
-        if (strcmp(ts->vars[i].nome, nome) == 0) {
-            return &ts->vars[i];
+void sai_escopo(void) {
+    if (escopo_atual != NULL && escopo_atual->pai != NULL) {
+        Escopo *velho = escopo_atual;
+        escopo_atual = escopo_atual->pai; /* Sobe um nível no encadeamento */
+        free(velho);
+    }
+}
+
+/* ---------------- Operações com Variáveis ---------------- */
+
+SimboloVar* ts_var_busca_no_escopo(Escopo *e, const char *nome) {
+    if (e == NULL) return NULL;
+    for (int i = 0; i < e->n; i++) {
+        if (strcmp(e->vars[i].nome, nome) == 0) {
+            return &e->vars[i];
         }
     }
     return NULL;
 }
 
+int ts_var_insere(Escopo *e, const char *nome, Tipo tipo) {
+    if (e == NULL) e = escopo_atual;
+
+    /* Redeclaração no MESMO escopo é proibida */
+    if (ts_var_busca_no_escopo(e, nome) != NULL) {
+        return 0; 
+    }
+    
+    int idx = e->n;
+    strncpy(e->vars[idx].nome, nome, MAX_NOME - 1);
+    e->vars[idx].nome[MAX_NOME - 1] = '\0';
+    e->vars[idx].tipo = tipo;
+    e->vars[idx].inicializada = 0;
+
+    if (e != escopo_global) {
+        if (inserindo_parametro) {
+            /* Parâmetros em x86: empilhados antes do EBP ([ebp+8], [ebp+12], ...) */
+            e->vars[idx].offset = 8 + (idx * 4);
+        } else {
+            /* Variáveis locais: abaixo do EBP com valores negativos ([ebp-4], [ebp-8], ...) */
+            int n_locais_puras = 0;
+            for (int i = 0; i < idx; i++) {
+                if (e->vars[i].offset < 0) n_locais_puras++;
+            }
+            e->vars[idx].offset = -4 - (n_locais_puras * 4);
+        }
+    } else {
+        e->vars[idx].offset = 0; /* Variáveis globais utilizam rótulos na seção .data */
+    }
+
+    e->n++;
+    return 1;
+}
+
+/* Busca Encadeada: Navega do escopo ativo subindo pelos ponteiros 'pai' até o global */
+SimboloVar* busca_variavel_info(const char *nome, int *is_local) {
+    Escopo *aux = escopo_atual;
+    while (aux != NULL) {
+        SimboloVar *v = ts_var_busca_no_escopo(aux, nome);
+        if (v != NULL) {
+            if (is_local) {
+                *is_local = (aux != escopo_global);
+            }
+            return v;
+        }
+        aux = aux->pai; /* Passo do encadeamento: sobe um nível na hierarquia */
+    }
+    return NULL;
+}
+
 SimboloVar* busca_variavel(const char *nome) {
-    /* prioridade: TS local, depois TS global */
-    SimboloVar *v = ts_var_busca(&ts_local, nome);
-    if (v != NULL) return v;
-    return ts_var_busca(&ts_global, nome);
+    int is_local;
+    return busca_variavel_info(nome, &is_local);
 }
 
 void marca_inicializada(const char *nome) {
@@ -82,7 +118,20 @@ void marca_inicializada(const char *nome) {
     if (v != NULL) v->inicializada = 1;
 }
 
-/* ---------------- funcoes ---------------- */
+int tamanho_locais_atual(void) {
+    int total = 0;
+    /* Calcula o espaço local necessário para o escopo local ativo */
+    if (escopo_atual != NULL && escopo_atual != escopo_global) {
+        for (int i = 0; i < escopo_atual->n; i++) {
+            if (escopo_atual->vars[i].offset < 0) {
+                total += 4;
+            }
+        }
+    }
+    return total;
+}
+
+/* ---------------- Tabela de Funções ---------------- */
 
 void ts_func_init(TabelaFuncoes *ts) {
     ts->n = 0;
@@ -96,23 +145,6 @@ SimboloFuncao* ts_func_busca(const char *nome) {
     }
     return NULL;
 }
-
-SimboloVar* busca_variavel_info(const char *nome, int *is_local) {
-    // Procura primeiro na tabela local
-    SimboloVar *v = ts_var_busca(&ts_local, nome);
-    if (v != NULL) {
-        *is_local = 1;
-        return v;
-    }
-    // Se não achar, procura na global
-    v = ts_var_busca(&ts_global, nome);
-    if (v != NULL) {
-        *is_local = 0;
-        return v;
-    }
-    return NULL; // Não encontrada
-}
-
 
 SimboloFuncao* ts_func_insere_prototipo(const char *nome, Tipo tipo_retorno) {
     SimboloFuncao *existente = ts_func_busca(nome);
@@ -139,24 +171,15 @@ void ts_func_adiciona_param(SimboloFuncao *f, const char *nome, Tipo tipo) {
     f->n_params++;
 }
 
-int tamanho_locais_atual(void) {
-    int total = 0;
-    for (int i = 0; i < ts_local.n; i++) {
-        // Apenas variáveis com offset negativo contam como locais que exigem 'sub esp, X'
-        if (ts_local.vars[i].offset < 0) {
-            total += 4; // Cada variável ocupa 4 bytes (32-bits)
-        }
-    }
-    return total;
-}
-
-/* ---------------- impressao final ---------------- */
+/* ---------------- Impressão de Relatórios ---------------- */
 
 void imprime_tabelas(void) {
     printf("\n==================== TABELA DE SIMBOLOS - VARIAVEIS GLOBAIS ====================\n");
     printf("%-20s %-10s\n", "NOME", "TIPO");
-    for (int i = 0; i < ts_global.n; i++) {
-        printf("%-20s %-10s\n", ts_global.vars[i].nome, tipo_para_str(ts_global.vars[i].tipo));
+    if (escopo_global != NULL) {
+        for (int i = 0; i < escopo_global->n; i++) {
+            printf("%-20s %-10s\n", escopo_global->vars[i].nome, tipo_para_str(escopo_global->vars[i].tipo));
+        }
     }
 
     printf("\n==================== TABELA DE SIMBOLOS - FUNCOES ====================\n");
