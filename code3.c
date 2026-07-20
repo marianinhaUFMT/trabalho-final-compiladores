@@ -24,6 +24,12 @@ int main() {
     int y;
     int resultado;
     char letra;
+    float num_1;
+    float num_2;
+    float media;
+
+    num_1 = 4.0;
+    num_2 = 2.0;
 
     titulo = "Teste Completo";
     contador = 5;
@@ -37,6 +43,10 @@ int main() {
     read(x);
     write("Digite o valor de y:");
     read(y);
+
+    media = (num_1 + num_2) / 2;
+    write("O valor da média é:");
+    write(media);
 
     resultado = soma(x, y);
     write("Resultado da soma:");
